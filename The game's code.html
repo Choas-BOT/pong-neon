@@ -1,0 +1,2233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON PONG: CYBER EDITION</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Orbitron', sans-serif;
+            background-color: #020204;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+
+        /* CRT Effects */
+        .crt-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.25) 50%,
+                rgba(0,0,0,0.25)
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 100;
+            animation: scanlineMove 10s linear infinite;
+        }
+
+        .scanlines.disabled {
+            display: none;
+        }
+
+        .crt-flicker {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(18, 16, 16, 0.1);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 99;
+            animation: flicker 0.15s infinite;
+        }
+
+        .crt-flicker.disabled {
+            display: none;
+        }
+
+        .vignette {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(0,0,0,0) 60%, rgba(0,0,0,0.6) 100%);
+            pointer-events: none;
+            z-index: 98;
+        }
+
+        .vignette.disabled {
+            display: none;
+        }
+
+        @keyframes scanlineMove {
+            0% { background-position: 0 0; }
+            100% { background-position: 0 100%; }
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.027906; }
+            5% { opacity: 0.048532; }
+            10% { opacity: 0.026271; }
+            15% { opacity: 0.042524; }
+            20% { opacity: 0.023869; }
+            25% { opacity: 0.046938; }
+            30% { opacity: 0.026728; }
+            35% { opacity: 0.041914; }
+            40% { opacity: 0.024321; }
+            45% { opacity: 0.048531; }
+            50% { opacity: 0.027329; }
+            55% { opacity: 0.043012; }
+            60% { opacity: 0.025423; }
+            65% { opacity: 0.047234; }
+            70% { opacity: 0.026123; }
+            75% { opacity: 0.042845; }
+            80% { opacity: 0.024732; }
+            85% { opacity: 0.046234; }
+            90% { opacity: 0.027845; }
+            95% { opacity: 0.043123; }
+            100% { opacity: 0.025234; }
+        }
+
+        /* Game Container */
+        .game-wrapper {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90vw;
+            max-width: 1200px;
+            aspect-ratio: 16/9;
+            background: #000;
+            border: 3px solid #0ff;
+            box-shadow: 
+                0 0 20px rgba(0,255,255,0.5),
+                inset 0 0 20px rgba(0,255,255,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+        }
+
+        /* UI Elements */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+        }
+
+        .ui-layer.interactive {
+            pointer-events: all;
+        }
+
+        .hud-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            width: 100%;
+        }
+
+        .score-box {
+            text-align: center;
+            padding: 15px 30px;
+            background: rgba(0,0,0,0.7);
+            border: 2px solid;
+            border-radius: 8px;
+            min-width: 120px;
+        }
+
+        .score-box.player {
+            border-color: #0ff;
+            box-shadow: 0 0 15px rgba(0,255,255,0.3);
+        }
+
+        .score-box.cpu {
+            border-color: #f0f;
+            box-shadow: 0 0 15px rgba(255,0,255,0.3);
+        }
+
+        .score-label {
+            font-size: 0.8rem;
+            letter-spacing: 3px;
+            margin-bottom: 5px;
+            opacity: 0.8;
+        }
+
+        .score-value {
+            font-size: 3rem;
+            font-weight: 900;
+            line-height: 1;
+        }
+
+        .player .score-value { color: #0ff; text-shadow: 0 0 20px rgba(0,255,255,0.8); }
+        .cpu .score-value { color: #f0f; text-shadow: 0 0 20px rgba(255,0,255,0.8); }
+
+        .game-title {
+            text-align: center;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            top: 20px;
+        }
+
+        .game-title h1 {
+            font-size: 1.2rem;
+            letter-spacing: 8px;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+            margin-bottom: 5px;
+        }
+
+        .game-title .subtitle {
+            font-size: 0.7rem;
+            color: #888;
+            letter-spacing: 2px;
+        }
+
+        /* HUD Buttons */
+        .hud-buttons {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            pointer-events: all;
+        }
+
+        .hud-btn {
+            width: 40px;
+            height: 40px;
+            background: rgba(0,0,0,0.7);
+            border: 2px solid #444;
+            color: #888;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+        }
+
+        .hud-btn:hover {
+            border-color: #0ff;
+            color: #0ff;
+            box-shadow: 0 0 15px rgba(0,255,255,0.3);
+        }
+
+        /* Power-up Indicators */
+        .powerup-bar {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            height: 30px;
+            justify-content: center;
+        }
+
+        .powerup-slot {
+            width: 30px;
+            height: 30px;
+            border: 2px solid #444;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            transition: all 0.3s;
+        }
+
+        .powerup-slot.active {
+            border-color: #ff0;
+            box-shadow: 0 0 10px rgba(255,255,0,0.5);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        /* Screens */
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s, transform 0.5s;
+            backdrop-filter: blur(10px);
+            z-index: 50;
+        }
+
+        .screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.95);
+        }
+
+        .main-title {
+            font-size: 5rem;
+            font-weight: 900;
+            background: linear-gradient(45deg, #0ff, #f0f, #0ff);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientShift 3s ease infinite;
+            text-shadow: none;
+            filter: drop-shadow(0 0 20px rgba(0,255,255,0.5));
+            margin-bottom: 10px;
+            letter-spacing: -2px;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .menu-subtitle {
+            color: #888;
+            font-size: 1rem;
+            letter-spacing: 10px;
+            margin-bottom: 40px;
+        }
+
+        .difficulty-select {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .diff-btn {
+            padding: 15px 30px;
+            background: transparent;
+            border: 2px solid #444;
+            color: #888;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+            min-width: 120px;
+        }
+
+        .diff-btn:hover {
+            border-color: #fff;
+            color: #fff;
+            box-shadow: 0 0 20px rgba(255,255,255,0.2);
+            transform: translateY(-2px);
+        }
+
+        .diff-btn.selected {
+            border-color: #0ff;
+            color: #0ff;
+            box-shadow: 0 0 20px rgba(0,255,255,0.4), inset 0 0 10px rgba(0,255,255,0.1);
+        }
+
+        .diff-btn.selected::after {
+            content: '◄';
+            position: absolute;
+            right: 10px;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        .start-btn {
+            padding: 20px 60px;
+            background: linear-gradient(45deg, #0ff, #0088ff);
+            border: none;
+            color: #000;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 900;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .start-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            transition: left 0.5s;
+        }
+
+        .start-btn:hover::before {
+            left: 100%;
+        }
+
+        .start-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 40px rgba(0,255,255,0.6);
+        }
+
+        .controls-info {
+            margin-top: 40px;
+            color: #666;
+            font-size: 0.8rem;
+            text-align: center;
+            line-height: 1.8;
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        .controls-info span {
+            color: #0ff;
+            background: rgba(0,255,255,0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin: 0 5px;
+        }
+
+        /* Settings Screen */
+        .settings-panel {
+            background: rgba(10,10,15,0.95);
+            border: 2px solid #0ff;
+            border-radius: 15px;
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .settings-title {
+            font-size: 2rem;
+            color: #0ff;
+            text-align: center;
+            margin-bottom: 30px;
+            text-shadow: 0 0 20px rgba(0,255,255,0.5);
+        }
+
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid #333;
+        }
+
+        .setting-label {
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        .setting-desc {
+            color: #666;
+            font-size: 0.75rem;
+            margin-top: 4px;
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        .toggle {
+            width: 60px;
+            height: 30px;
+            background: #333;
+            border-radius: 15px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .toggle.active {
+            background: #0ff;
+            box-shadow: 0 0 15px rgba(0,255,255,0.5);
+        }
+
+        .toggle::after {
+            content: '';
+            position: absolute;
+            width: 26px;
+            height: 26px;
+            background: #fff;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s;
+        }
+
+        .toggle.active::after {
+            left: 32px;
+        }
+
+        .settings-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        .settings-btn {
+            flex: 1;
+            padding: 15px;
+            background: transparent;
+            border: 2px solid;
+            color: #fff;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+        }
+
+        .settings-btn.save {
+            border-color: #0f0;
+            color: #0f0;
+        }
+
+        .settings-btn.save:hover {
+            background: #0f0;
+            color: #000;
+            box-shadow: 0 0 20px rgba(0,255,0,0.4);
+        }
+
+        .settings-btn.cancel {
+            border-color: #f00;
+            color: #f00;
+        }
+
+        .settings-btn.cancel:hover {
+            background: #f00;
+            color: #000;
+            box-shadow: 0 0 20px rgba(255,0,0,0.4);
+        }
+
+        /* Game Over Screen */
+        .game-over-title {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+
+        .win { color: #0ff; text-shadow: 0 0 30px rgba(0,255,255,0.8); }
+        .lose { color: #f0f; text-shadow: 0 0 30px rgba(255,0,255,0.8); }
+
+        .final-stats {
+            background: rgba(255,255,255,0.05);
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: center;
+            border: 1px solid #333;
+            min-width: 300px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 60px;
+            margin: 10px 0;
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        .stat-label { color: #888; }
+        .stat-value { color: #fff; font-size: 1.2rem; }
+
+        .restart-btn {
+            padding: 15px 40px;
+            background: transparent;
+            border: 2px solid #f0f;
+            color: #f0f;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+        }
+
+        .restart-btn:hover {
+            background: #f0f;
+            color: #000;
+            box-shadow: 0 0 30px rgba(255,0,255,0.5);
+        }
+
+        /* Pause Screen */
+        .pause-title {
+            font-size: 3rem;
+            color: #ff0;
+            text-shadow: 0 0 20px rgba(255,255,0,0.5);
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+        }
+
+        .pause-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .pause-btn {
+            padding: 15px 40px;
+            background: transparent;
+            border: 2px solid;
+            color: #fff;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 250px;
+            text-transform: uppercase;
+        }
+
+        .pause-btn.resume {
+            border-color: #0ff;
+            color: #0ff;
+        }
+
+        .pause-btn.resume:hover {
+            background: #0ff;
+            color: #000;
+            box-shadow: 0 0 20px rgba(0,255,255,0.4);
+        }
+
+        .pause-btn.settings {
+            border-color: #ff0;
+            color: #ff0;
+        }
+
+        .pause-btn.settings:hover {
+            background: #ff0;
+            color: #000;
+            box-shadow: 0 0 20px rgba(255,255,0,0.4);
+        }
+
+        .pause-btn.exit {
+            border-color: #f00;
+            color: #f00;
+        }
+
+        .pause-btn.exit:hover {
+            background: #f00;
+            color: #000;
+            box-shadow: 0 0 20px rgba(255,0,0,0.4);
+        }
+
+        /* Combo Display */
+        .combo-display {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 4rem;
+            font-weight: 900;
+            color: #ff0;
+            text-shadow: 0 0 30px rgba(255,255,0,0.8);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s;
+            z-index: 40;
+        }
+
+        .combo-display.show {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+
+        /* Difficulty Indicator */
+        .diff-indicator {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #666;
+            font-size: 0.8rem;
+            letter-spacing: 2px;
+        }
+
+        /* Mobile Controls */
+        .mobile-controls {
+            display: none;
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            justify-content: space-between;
+            padding: 0 40px;
+            pointer-events: all;
+        }
+
+        @media (max-width: 768px) {
+            .mobile-controls {
+                display: flex;
+            }
+            .main-title { font-size: 3rem; }
+            .difficulty-select { flex-direction: column; gap: 10px; }
+            .game-over-title { font-size: 2.5rem; }
+            .stat-row { flex-direction: column; gap: 5px; text-align: center; }
+            .hud-buttons { top: 10px; right: 10px; }
+            .hud-btn { width: 35px; height: 35px; font-size: 1rem; }
+        }
+
+        .touch-zone {
+            width: 100px;
+            height: 100px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.05);
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .touch-zone:active {
+            background: rgba(0,255,255,0.2);
+            border-color: rgba(0,255,255,0.5);
+            color: rgba(0,255,255,0.8);
+        }
+
+        /* Particle overlay for extra effects */
+        .particle-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .floating-particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #0ff;
+            border-radius: 50%;
+            opacity: 0.3;
+            animation: float 10s infinite linear;
+        }
+
+        @keyframes float {
+            from { transform: translateY(100vh) rotate(0deg); }
+            to { transform: translateY(-100px) rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="crt-container">
+    <div class="scanlines" id="scanlines"></div>
+    <div class="crt-flicker" id="flicker"></div>
+    <div class="vignette" id="vignette"></div>
+    
+    <!-- Background Particles -->
+    <div class="particle-overlay" id="bgParticles"></div>
+
+    <div class="game-wrapper">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- HUD Layer -->
+        <div class="ui-layer" id="hud">
+            <div class="hud-top">
+                <div class="score-box player">
+                    <div class="score-label">PLAYER</div>
+                    <div class="score-value" id="scorePlayer">0</div>
+                    <div class="powerup-bar" id="playerPowerups"></div>
+                </div>
+                
+                <div class="game-title">
+                    <h1>NEON PONG</h1>
+                    <div class="subtitle">CYBER EDITION v2.0</div>
+                </div>
+
+                <div class="score-box cpu">
+                    <div class="score-label">CPU</div>
+                    <div class="score-value" id="scoreCPU">0</div>
+                    <div class="powerup-bar" id="cpuPowerups"></div>
+                </div>
+            </div>
+
+            <!-- HUD Buttons -->
+            <div class="hud-buttons">
+                <button class="hud-btn" id="btnSettings" title="Settings">⚙</button>
+                <button class="hud-btn" id="btnExit" title="Exit to Menu">✕</button>
+            </div>
+
+            <div class="combo-display" id="comboDisplay">COMBO x3!</div>
+            
+            <div class="diff-indicator" id="diffIndicator">DIFFICULTY: NORMAL</div>
+
+            <!-- Mobile Controls -->
+            <div class="mobile-controls">
+                <div class="touch-zone" id="btnUp">▲</div>
+                <div class="touch-zone" id="btnDown">▼</div>
+            </div>
+        </div>
+
+        <!-- Main Menu -->
+        <div class="screen interactive" id="mainMenu">
+            <h1 class="main-title">NEON PONG</h1>
+            <p class="menu-subtitle">CYBERNETIC SPORTS SIMULATION</p>
+            
+            <div class="difficulty-select">
+                <button class="diff-btn" data-diff="easy">EASY</button>
+                <button class="diff-btn selected" data-diff="normal">NORMAL</button>
+                <button class="diff-btn" data-diff="hard">HARD</button>
+                <button class="diff-btn" data-diff="insane">INSANE</button>
+            </div>
+
+            <button class="start-btn" id="btnStart">INITIATE SEQUENCE</button>
+
+            <div class="controls-info">
+                <p>MOUSE / TOUCH to Control Paddle</p>
+                <p><span>SPACE</span> to Pause | <span>P</span> for Power-ups</p>
+                <p>First to <span>10</span> points wins</p>
+            </div>
+        </div>
+
+        <!-- Pause Screen -->
+        <div class="screen interactive hidden" id="pauseScreen">
+            <h2 class="pause-title">SYSTEM PAUSED</h2>
+            <div class="pause-buttons">
+                <button class="pause-btn resume" id="btnResume">RESUME</button>
+                <button class="pause-btn settings" id="btnPauseSettings">SETTINGS</button>
+                <button class="pause-btn exit" id="btnPauseExit">EXIT TO MENU</button>
+            </div>
+        </div>
+
+        <!-- Settings Screen -->
+        <div class="screen interactive hidden" id="settingsScreen">
+            <div class="settings-panel">
+                <h2 class="settings-title">SYSTEM SETTINGS</h2>
+                
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">CRT Scanlines</div>
+                        <div class="setting-desc">Classic monitor effect</div>
+                    </div>
+                    <div class="toggle active" id="toggleScanlines" data-setting="scanlines"></div>
+                </div>
+
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Screen Flicker</div>
+                        <div class="setting-desc">Authentic CRT flicker</div>
+                    </div>
+                    <div class="toggle active" id="toggleFlicker" data-setting="flicker"></div>
+                </div>
+
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Vignette</div>
+                        <div class="setting-desc">Screen edge darkening</div>
+                    </div>
+                    <div class="toggle active" id="toggleVignette" data-setting="vignette"></div>
+                </div>
+
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Particle Effects</div>
+                        <div class="setting-desc">Explosions and trails</div>
+                    </div>
+                    <div class="toggle active" id="toggleParticles" data-setting="particles"></div>
+                </div>
+
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Ball Trails</div>
+                        <div class="setting-desc">Motion blur effect</div>
+                    </div>
+                    <div class="toggle active" id="toggleTrails" data-setting="trails"></div>
+                </div>
+
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Background Grid</div>
+                        <div class="setting-desc">Cyberpunk grid animation</div>
+                    </div>
+                    <div class="toggle active" id="toggleGrid" data-setting="grid"></div>
+                </div>
+
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Screen Shake</div>
+                        <div class="setting-desc">Impact feedback</div>
+                    </div>
+                    <div class="toggle active" id="toggleShake" data-setting="shake"></div>
+                </div>
+
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Audio</div>
+                        <div class="setting-desc">Sound effects and music</div>
+                    </div>
+                    <div class="toggle active" id="toggleAudio" data-setting="audio"></div>
+                </div>
+
+                <div class="settings-buttons">
+                    <button class="settings-btn cancel" id="btnSettingsCancel">CANCEL</button>
+                    <button class="settings-btn save" id="btnSettingsSave">SAVE</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div class="screen interactive hidden" id="gameOverScreen">
+            <h2 class="game-over-title" id="winnerTitle">VICTORY</h2>
+            
+            <div class="final-stats">
+                <div class="stat-row">
+                    <span class="stat-label">FINAL SCORE</span>
+                    <span class="stat-value" id="finalScore">10 - 5</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">LONGEST RALLY</span>
+                    <span class="stat-value" id="statRally">42 hits</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">POWER-UPS USED</span>
+                    <span class="stat-value" id="statPowerups">3</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">MAX COMBO</span>
+                    <span class="stat-value" id="statCombo">x5</span>
+                </div>
+            </div>
+
+            <button class="restart-btn" id="btnRestart">PLAY AGAIN</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * NEON PONG - CYBER EDITION
+ * Full-featured arcade pong with customizable visuals, AI difficulties, and power-ups
+ * Total: 1200+ lines of polished game code
+ */
+
+// ==================== CONFIGURATION ====================
+
+const CONFIG = {
+    winScore: 10,
+    paddleWidth: 16,
+    paddleHeight: 100,
+    ballRadius: 8,
+    initialBallSpeed: 6,
+    maxBallSpeed: 20,
+    powerUpChance: 0.2,
+    comboTime: 180,
+    colors: {
+        player: '#00ffff',
+        cpu: '#ff00ff',
+        ball: '#ffffff',
+        ballTrail: '#00ffff',
+        powerup: '#ffff00',
+        bg: '#020204',
+        grid: '#0a0a0a'
+    }
+};
+
+const DIFFICULTY_SETTINGS = {
+    easy: { 
+        name: 'EASY',
+        cpuSpeed: 4, 
+        reactionDelay: 15, 
+        errorMargin: 50, 
+        ballSpeedMod: 0.85,
+        predictiveness: 0.3
+    },
+    normal: { 
+        name: 'NORMAL',
+        cpuSpeed: 6, 
+        reactionDelay: 8, 
+        errorMargin: 25, 
+        ballSpeedMod: 1.0,
+        predictiveness: 0.6
+    },
+    hard: { 
+        name: 'HARD',
+        cpuSpeed: 8, 
+        reactionDelay: 4, 
+        errorMargin: 12, 
+        ballSpeedMod: 1.15,
+        predictiveness: 0.85
+    },
+    insane: { 
+        name: 'INSANE',
+        cpuSpeed: 10.5, 
+        reactionDelay: 1, 
+        errorMargin: 3, 
+        ballSpeedMod: 1.3,
+        predictiveness: 1.0
+    }
+};
+
+// ==================== SETTINGS MANAGER ====================
+
+class SettingsManager {
+    constructor() {
+        this.settings = {
+            scanlines: true,
+            flicker: true,
+            vignette: true,
+            particles: true,
+            trails: true,
+            grid: true,
+            shake: true,
+            audio: true
+        };
+        this.tempSettings = { ...this.settings };
+        this.callbacks = {};
+    }
+
+    get(key) {
+        return this.settings[key];
+    }
+
+    set(key, value) {
+        this.settings[key] = value;
+        if (this.callbacks[key]) {
+            this.callbacks[key].forEach(cb => cb(value));
+        }
+    }
+
+    setTemp(key, value) {
+        this.tempSettings[key] = value;
+    }
+
+    getTemp(key) {
+        return this.tempSettings[key];
+    }
+
+    applyTemp() {
+        this.settings = { ...this.tempSettings };
+        Object.keys(this.settings).forEach(key => {
+            if (this.callbacks[key]) {
+                this.callbacks[key].forEach(cb => cb(this.settings[key]));
+            }
+        });
+    }
+
+    cancelTemp() {
+        this.tempSettings = { ...this.settings };
+    }
+
+    onChange(key, callback) {
+        if (!this.callbacks[key]) this.callbacks[key] = [];
+        this.callbacks[key].push(callback);
+    }
+
+    updateVisuals() {
+        document.getElementById('scanlines').classList.toggle('disabled', !this.settings.scanlines);
+        document.getElementById('flicker').classList.toggle('disabled', !this.settings.flicker);
+        document.getElementById('vignette').classList.toggle('disabled', !this.settings.vignette);
+    }
+}
+
+// ==================== AUDIO CONTROLLER ====================
+
+class AudioController {
+    constructor(settings) {
+        this.settings = settings;
+        this.initialized = false;
+        this.synths = {};
+        this.muted = false;
+    }
+
+    async init() {
+        if (this.initialized) return;
+        await Tone.start();
+        
+        this.synths.paddle = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "fmsquare", modulationType: "sine", modulationIndex: 3, harmonicity: 3.4 },
+            envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.1 }
+        }).toDestination();
+        this.synths.paddle.volume.value = -10;
+
+        this.synths.wall = new Tone.MembraneSynth({
+            pitchDecay: 0.05,
+            octaves: 4,
+            oscillator: { type: "sine" },
+            envelope: { attack: 0.001, decay: 0.2, sustain: 0.01, release: 0.4 }
+        }).toDestination();
+        this.synths.wall.volume.value = -12;
+
+        this.synths.score = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "triangle" },
+            envelope: { attack: 0.02, decay: 0.1, sustain: 0.3, release: 1 }
+        }).toDestination();
+        this.synths.score.volume.value = -8;
+
+        this.synths.powerup = new Tone.DuoSynth({
+            vibratoAmount: 0.5,
+            vibratoRate: 5,
+            harmonicity: 1.5,
+            voice0: { volume: -10, portamento: 0, oscillator: { type: "sine" }, filterEnvelope: { attack: 0.01, decay: 0, sustain: 1, release: 0.5 } },
+            voice1: { volume: -10, portamento: 0, oscillator: { type: "sawtooth" }, filterEnvelope: { attack: 0.01, decay: 0, sustain: 1, release: 0.5 } }
+        }).toDestination();
+        this.synths.powerup.volume.value = -12;
+
+        this.synths.combo = new Tone.Synth({
+            oscillator: { type: "fmsine", modulationType: "square", modulationIndex: 3, harmonicity: 4 },
+            envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.2 }
+        }).toDestination();
+        this.synths.combo.volume.value = -8;
+
+        this.initialized = true;
+    }
+
+    play(type, value = null) {
+        if (!this.initialized || !this.settings.get('audio') || this.muted) return;
+        
+        try {
+            switch(type) {
+                case 'paddle':
+                    const notes = ["C5", "E5", "G5", "A5", "C6"];
+                    const note = notes[Math.floor(Math.random() * notes.length)];
+                    this.synths.paddle.triggerAttackRelease(note, "16n");
+                    break;
+                case 'wall':
+                    this.synths.wall.triggerAttackRelease("C2", "32n");
+                    break;
+                case 'score':
+                    this.synths.score.triggerAttackRelease(["C6", "E6"], "8n");
+                    break;
+                case 'win':
+                    const now = Tone.now();
+                    this.synths.score.triggerAttackRelease("C4", "8n", now);
+                    this.synths.score.triggerAttackRelease("E4", "8n", now + 0.1);
+                    this.synths.score.triggerAttackRelease("G4", "8n", now + 0.2);
+                    this.synths.score.triggerAttackRelease("C5", "2n", now + 0.3);
+                    break;
+                case 'powerup':
+                    this.synths.powerup.triggerAttackRelease("C6", "8n");
+                    break;
+                case 'combo':
+                    const comboNotes = ["E6", "G6", "B6", "C7"];
+                    const comboNote = comboNotes[Math.min(value - 2, 3)] || "C7";
+                    this.synths.combo.triggerAttackRelease(comboNote, "16n");
+                    break;
+            }
+        } catch(e) {
+            console.warn("Audio error:", e);
+        }
+    }
+
+    setMuted(muted) {
+        this.muted = muted;
+    }
+}
+
+// ==================== PARTICLE SYSTEM ====================
+
+class ParticleSystem {
+    constructor(settings) {
+        this.settings = settings;
+        this.particles = [];
+        this.trails = [];
+        this.shockwaves = [];
+    }
+
+    createExplosion(x, y, color, count = 25, speed = 8) {
+        if (!this.settings.get('particles')) return;
+        
+        for (let i = 0; i < count; i++) {
+            const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5);
+            const velocity = Math.random() * speed + 2;
+            this.particles.push({
+                x: x,
+                y: y,
+                vx: Math.cos(angle) * velocity,
+                vy: Math.sin(angle) * velocity,
+                life: 1.0,
+                decay: Math.random() * 0.02 + 0.015,
+                color: color,
+                size: Math.random() * 5 + 2,
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.2
+            });
+        }
+    }
+
+    createShockwave(x, y, color) {
+        if (!this.settings.get('particles')) return;
+        
+        this.shockwaves.push({
+            x: x,
+            y: y,
+            radius: 10,
+            maxRadius: 100,
+            life: 1.0,
+            color: color
+        });
+    }
+
+    createTrail(x, y, color) {
+        if (!this.settings.get('trails')) return;
+        
+        this.trails.push({
+            x: x,
+            y: y,
+            life: 0.6,
+            decay: 0.04,
+            color: color,
+            size: CONFIG.ballRadius * 1.5
+        });
+    }
+
+    createSparkle(x, y, color, count = 8) {
+        if (!this.settings.get('particles')) return;
+        
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 3 + 1;
+            this.particles.push({
+                x: x,
+                y: y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: 0.8,
+                decay: 0.02,
+                color: color,
+                size: Math.random() * 3 + 1,
+                rotation: 0,
+                rotationSpeed: 0
+            });
+        }
+    }
+
+    update() {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            let p = this.particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= p.decay;
+            p.vx *= 0.97;
+            p.vy *= 0.97;
+            p.rotation += p.rotationSpeed;
+            
+            if (p.life <= 0) {
+                this.particles.splice(i, 1);
+            }
+        }
+
+        for (let i = this.trails.length - 1; i >= 0; i--) {
+            let t = this.trails[i];
+            t.life -= t.decay;
+            t.size *= 0.92;
+            if (t.life <= 0) {
+                this.trails.splice(i, 1);
+            }
+        }
+
+        for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+            let s = this.shockwaves[i];
+            s.radius += 5;
+            s.life -= 0.03;
+            if (s.life <= 0 || s.radius > s.maxRadius) {
+                this.shockwaves.splice(i, 1);
+            }
+        }
+    }
+
+    draw(ctx) {
+        this.trails.forEach(t => {
+            ctx.globalAlpha = t.life * 0.4;
+            ctx.fillStyle = t.color;
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, t.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        this.shockwaves.forEach(s => {
+            ctx.globalAlpha = s.life * 0.5;
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+            ctx.stroke();
+        });
+
+        this.particles.forEach(p => {
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rotation);
+            ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+            ctx.restore();
+        });
+
+        ctx.globalAlpha = 1.0;
+    }
+
+    clear() {
+        this.particles = [];
+        this.trails = [];
+        this.shockwaves = [];
+    }
+}
+
+// ==================== POWER-UP SYSTEM ====================
+
+class PowerUp {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 18;
+        this.type = this.randomType();
+        this.life = 600;
+        this.pulse = 0;
+        this.bobOffset = Math.random() * Math.PI * 2;
+    }
+
+    randomType() {
+        const types = ['expand', 'shrink', 'speed', 'slow', 'multiball', 'ghost'];
+        return types[Math.floor(Math.random() * types.length)];
+    }
+
+    getIcon() {
+        const icons = {
+            expand: '⬆',
+            shrink: '⬇',
+            speed: '⚡',
+            slow: '🐌',
+            multiball: '●',
+            ghost: '👻'
+        };
+        return icons[this.type];
+    }
+
+    getColor() {
+        const colors = {
+            expand: '#0f0',
+            shrink: '#f00',
+            speed: '#ff0',
+            slow: '#00f',
+            multiball: '#f0f',
+            ghost: '#fff'
+        };
+        return colors[this.type];
+    }
+
+    getName() {
+        const names = {
+            expand: 'EXPAND',
+            shrink: 'SHRINK',
+            speed: 'SPEED',
+            slow: 'SLOW',
+            multiball: 'MULTI',
+            ghost: 'GHOST'
+        };
+        return names[this.type];
+    }
+
+    update() {
+        this.life--;
+        this.pulse += 0.08;
+        return this.life > 0;
+    }
+
+    draw(ctx) {
+        const scale = 1 + Math.sin(this.pulse) * 0.12;
+        const bob = Math.sin(this.pulse * 0.5 + this.bobOffset) * 3;
+        
+        ctx.save();
+        ctx.translate(this.x, this.y + bob);
+        ctx.scale(scale, scale);
+        
+        ctx.shadowBlur = 25;
+        ctx.shadowColor = this.getColor();
+        
+        ctx.strokeStyle = this.getColor();
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.fillStyle = this.getColor() + '40';
+        ctx.fill();
+        
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 20px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.getIcon(), 0, 1);
+        
+        ctx.restore();
+    }
+}
+
+// ==================== PADDLE CLASS ====================
+
+class Paddle {
+    constructor(isPlayer, x, y, canvasHeight) {
+        this.isPlayer = isPlayer;
+        this.x = x;
+        this.y = y;
+        this.canvasHeight = canvasHeight;
+        this.width = CONFIG.paddleWidth;
+        this.height = CONFIG.paddleHeight;
+        this.baseHeight = CONFIG.paddleHeight;
+        this.dy = 0;
+        this.speed = 8;
+        this.powerups = [];
+        this.effects = {
+            expanded: 0,
+            shrunk: 0,
+            speed: 0,
+            ghost: 0
+        };
+        this.targetY = y;
+    }
+
+    update(targetY, difficultyMultiplier = 1) {
+        if (this.effects.expanded > 0) {
+            this.height = this.baseHeight * 1.6;
+            this.effects.expanded--;
+        } else if (this.effects.shrunk > 0) {
+            this.height = this.baseHeight * 0.5;
+            this.effects.shrunk--;
+        } else {
+            this.height = this.baseHeight;
+        }
+
+        if (this.isPlayer) {
+            this.targetY = targetY - this.height / 2;
+        } else {
+            const center = this.y + this.height / 2;
+            const diff = targetY - center;
+            
+            const error = (Math.random() - 0.5) * 2 * (this.isPlayer ? 0 : 20);
+            const adjustedTarget = targetY + error;
+            
+            const moveThreshold = 10;
+            if (Math.abs(diff) > moveThreshold) {
+                const speedMult = this.effects.speed > 0 ? 1.5 : 1;
+                const maxSpeed = this.speed * speedMult * difficultyMultiplier;
+                const moveAmount = Math.sign(adjustedTarget - center) * Math.min(Math.abs(adjustedTarget - center) * 0.15, maxSpeed);
+                this.targetY = this.y + moveAmount;
+            }
+        }
+
+        this.y += (this.targetY - this.y) * 0.25;
+        this.y = Math.max(0, Math.min(this.canvasHeight - this.height, this.y));
+    }
+
+    addEffect(type) {
+        if (type === 'expand') {
+            this.effects.shrunk = 0;
+            this.effects.expanded = 600;
+        } else if (type === 'shrink') {
+            this.effects.expanded = 0;
+            this.effects.shrunk = 600;
+        } else if (type === 'speed') {
+            this.effects.speed = 600;
+        } else if (type === 'ghost') {
+            this.effects.ghost = 300;
+        }
+    }
+
+    draw(ctx) {
+        const color = this.isPlayer ? CONFIG.colors.player : CONFIG.colors.cpu;
+        const isGhost = this.effects.ghost > 0;
+        
+        ctx.save();
+        
+        if (isGhost) {
+            ctx.globalAlpha = 0.6 + Math.sin(Date.now() * 0.01) * 0.2;
+        }
+        
+        ctx.shadowBlur = 25;
+        ctx.shadowColor = color;
+        
+        const gradient = ctx.createLinearGradient(this.x, this.y, this.x + this.width, this.y);
+        gradient.addColorStop(0, color);
+        gradient.addColorStop(1, color + '80');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.roundRect(this.x, this.y, this.width, this.height, 8);
+        ctx.fill();
+        
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.fillRect(this.x + 3, this.y + 3, this.width - 6, this.height - 6);
+        
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillRect(this.x + 6, this.y + 6, this.width - 12, this.height - 12);
+        
+        ctx.restore();
+    }
+}
+
+// ==================== BALL CLASS ====================
+
+class Ball {
+    constructor(x, y, isMain = true) {
+        this.x = x;
+        this.y = y;
+        this.dx = 0;
+        this.dy = 0;
+        this.speed = 0;
+        this.baseSpeed = 0;
+        this.radius = isMain ? CONFIG.ballRadius : CONFIG.ballRadius * 0.8;
+        this.isMain = isMain;
+        this.trail = [];
+        this.ghost = false;
+        this.life = isMain ? -1 : 600;
+    }
+
+    reset(canvasWidth, canvasHeight, direction, speed) {
+        this.x = canvasWidth / 2;
+        this.y = canvasHeight / 2;
+        this.baseSpeed = speed;
+        this.speed = speed;
+        
+        const angle = (Math.random() * Math.PI / 2.5) - Math.PI / 5;
+        this.dx = Math.cos(angle) * this.speed * direction;
+        this.dy = Math.sin(angle) * this.speed;
+        this.trail = [];
+    }
+
+    update(canvasWidth, canvasHeight) {
+        if (this.life > 0) this.life--;
+
+        this.trail.push({ x: this.x, y: this.y, life: 1, size: this.radius });
+        if (this.trail.length > 12) this.trail.shift();
+        
+        this.trail.forEach(t => {
+            t.life -= 0.08;
+            t.size *= 0.95;
+        });
+
+        this.x += this.dx;
+        this.y += this.dy;
+
+        if (this.y - this.radius < 0 || this.y + this.radius > canvasHeight) {
+            this.dy = -this.dy;
+            if (this.y < this.radius) this.y = this.radius;
+            if (this.y > canvasHeight - this.radius) this.y = canvasHeight - this.radius;
+            return 'wall';
+        }
+        return null;
+    }
+
+    draw(ctx) {
+        this.trail.forEach((t, i) => {
+            if (t.life <= 0) return;
+            ctx.globalAlpha = t.life * 0.4;
+            ctx.fillStyle = this.isMain ? CONFIG.colors.ballTrail : '#ff0';
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, t.size * (i / 12), 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        ctx.globalAlpha = this.ghost ? 0.6 : 1;
+        ctx.shadowBlur = this.isMain ? 20 : 15;
+        ctx.shadowColor = this.isMain ? CONFIG.colors.ball : '#ff0';
+        
+        const color = this.isMain ? CONFIG.colors.ball : '#ff0';
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+    }
+}
+
+// ==================== MAIN GAME CLASS ====================
+
+class NeonPong {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.settings = new SettingsManager();
+        this.audio = new AudioController(this.settings);
+        this.particles = new ParticleSystem(this.settings);
+        
+        this.state = 'MENU';
+        this.previousState = 'MENU';
+        this.difficulty = 'normal';
+        this.diffSettings = DIFFICULTY_SETTINGS.normal;
+        
+        this.player = null;
+        this.cpu = null;
+        this.balls = [];
+        this.powerups = [];
+        
+        this.scores = { player: 0, cpu: 0 };
+        this.stats = {
+            rally: 0,
+            maxRally: 0,
+            powerupsUsed: 0,
+            maxCombo: 0,
+            totalHits: 0
+        };
+        this.combo = 0;
+        this.comboTimer = 0;
+        
+        this.mouseY = 0;
+        this.touchOffset = 0;
+        this.keys = {};
+        
+        this.lastTime = 0;
+        this.frameCount = 0;
+        
+        this.gridOffset = 0;
+        this.shakeAmount = 0;
+        
+        this.init();
+    }
+
+    init() {
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+        
+        // Input handlers
+        this.canvas.addEventListener('mousemove', (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            this.mouseY = (e.clientY - rect.top) * (this.canvas.height / rect.height);
+        });
+        
+        this.canvas.addEventListener('touchstart', (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            const touchY = e.touches[0].clientY - rect.top;
+            this.touchOffset = this.player ? (touchY * (this.canvas.height / rect.height) - this.player.y) : 0;
+        }, { passive: false });
+        
+        this.canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = this.canvas.getBoundingClientRect();
+            const touchY = e.touches[0].clientY - rect.top;
+            this.mouseY = touchY * (this.canvas.height / rect.height) - this.touchOffset;
+        }, { passive: false });
+
+        window.addEventListener('keydown', (e) => {
+            this.keys[e.code] = true;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (this.state === 'PLAYING' || this.state === 'PAUSED') {
+                    this.togglePause();
+                }
+            }
+            if (e.code === 'KeyP' && this.state === 'PLAYING') {
+                this.spawnPowerup();
+            }
+            if (e.code === 'Escape' && this.state === 'PLAYING') {
+                this.openSettings();
+            }
+        });
+        
+        window.addEventListener('keyup', (e) => {
+            this.keys[e.code] = false;
+        });
+
+        // Mobile buttons
+        const btnUp = document.getElementById('btnUp');
+        const btnDown = document.getElementById('btnDown');
+        
+        const handleMobile = (dir, active) => {
+            if (active) {
+                this.keys[dir === 'up' ? 'ArrowUp' : 'ArrowDown'] = true;
+            } else {
+                this.keys[dir === 'up' ? 'ArrowUp' : 'ArrowDown'] = false;
+            }
+        };
+        
+        btnUp.addEventListener('touchstart', (e) => { e.preventDefault(); handleMobile('up', true); });
+        btnUp.addEventListener('touchend', (e) => { e.preventDefault(); handleMobile('up', false); });
+        btnDown.addEventListener('touchstart', (e) => { e.preventDefault(); handleMobile('down', true); });
+        btnDown.addEventListener('touchend', (e) => { e.preventDefault(); handleMobile('down', false); });
+
+        // Difficulty selection
+        const diffButtons = document.querySelectorAll('.diff-btn');
+        diffButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                diffButtons.forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                
+                const diff = btn.dataset.diff;
+                this.difficulty = diff;
+                this.diffSettings = DIFFICULTY_SETTINGS[diff];
+                
+                document.getElementById('diffIndicator').textContent = `DIFFICULTY: ${this.diffSettings.name}`;
+                
+                if (this.audio.initialized) {
+                    this.audio.play('paddle');
+                }
+            });
+        });
+
+        // Main buttons
+        document.getElementById('btnStart').addEventListener('click', () => this.startGame());
+        document.getElementById('btnResume').addEventListener('click', () => this.togglePause());
+        document.getElementById('btnRestart').addEventListener('click', () => this.startGame());
+        
+        // HUD buttons
+        document.getElementById('btnSettings').addEventListener('click', () => this.openSettings());
+        document.getElementById('btnExit').addEventListener('click', () => this.exitToMenu());
+        
+        // Pause menu buttons
+        document.getElementById('btnPauseSettings').addEventListener('click', () => {
+            document.getElementById('pauseScreen').classList.add('hidden');
+            this.openSettings();
+        });
+        
+        document.getElementById('btnPauseExit').addEventListener('click', () => this.exitToMenu());
+
+        // Settings toggles
+        const toggles = document.querySelectorAll('.toggle');
+        toggles.forEach(toggle => {
+            toggle.addEventListener('click', () => {
+                const setting = toggle.dataset.setting;
+                const newValue = !toggle.classList.contains('active');
+                toggle.classList.toggle('active');
+                this.settings.setTemp(setting, newValue);
+            });
+        });
+
+        // Settings buttons
+        document.getElementById('btnSettingsSave').addEventListener('click', () => {
+            this.settings.applyTemp();
+            this.settings.updateVisuals();
+            this.closeSettings();
+        });
+
+        document.getElementById('btnSettingsCancel').addEventListener('click', () => {
+            this.settings.cancelTemp();
+            this.updateSettingsUI();
+            this.closeSettings();
+        });
+
+        // Settings change callbacks
+        this.settings.onChange('audio', (value) => {
+            this.audio.setMuted(!value);
+        });
+
+        this.createBackgroundParticles();
+        this.updateSettingsUI();
+        this.loop(0);
+    }
+
+    createBackgroundParticles() {
+        const container = document.getElementById('bgParticles');
+        for (let i = 0; i < 20; i++) {
+            const p = document.createElement('div');
+            p.className = 'floating-particle';
+            p.style.left = Math.random() * 100 + '%';
+            p.style.animationDuration = (Math.random() * 10 + 10) + 's';
+            p.style.animationDelay = Math.random() * 10 + 's';
+            container.appendChild(p);
+        }
+    }
+
+    updateSettingsUI() {
+        document.querySelectorAll('.toggle').forEach(toggle => {
+            const setting = toggle.dataset.setting;
+            const value = this.settings.get(setting);
+            toggle.classList.toggle('active', value);
+        });
+    }
+
+    openSettings() {
+        this.previousState = this.state;
+        this.state = 'SETTINGS';
+        document.getElementById('settingsScreen').classList.remove('hidden');
+        this.settings.cancelTemp();
+        this.updateSettingsUI();
+    }
+
+    closeSettings() {
+        document.getElementById('settingsScreen').classList.add('hidden');
+        this.state = this.previousState;
+    }
+
+    exitToMenu() {
+        this.state = 'MENU';
+        document.getElementById('pauseScreen').classList.add('hidden');
+        document.getElementById('gameOverScreen').classList.add('hidden');
+        document.getElementById('mainMenu').classList.remove('hidden');
+        document.getElementById('hud').style.opacity = '0';
+        this.particles.clear();
+        this.balls = [];
+        this.powerups = [];
+    }
+
+    resize() {
+        const rect = this.canvas.parentElement.getBoundingClientRect();
+        this.canvas.width = rect.width;
+        this.canvas.height = rect.height;
+        
+        if (this.player && this.cpu) {
+            this.player.canvasHeight = this.canvas.height;
+            this.cpu.canvasHeight = this.canvas.height;
+            this.player.x = 30;
+            this.cpu.x = this.canvas.width - 30 - CONFIG.paddleWidth;
+        }
+    }
+
+    startGame() {
+        this.audio.init();
+        
+        this.scores = { player: 0, cpu: 0 };
+        this.stats = {
+            rally: 0,
+            maxRally: 0,
+            powerupsUsed: 0,
+            maxCombo: 0,
+            totalHits: 0
+        };
+        this.combo = 0;
+        this.comboTimer = 0;
+        
+        this.player = new Paddle(true, 30, this.canvas.height/2 - CONFIG.paddleHeight/2, this.canvas.height);
+        this.cpu = new Paddle(false, this.canvas.width - 30 - CONFIG.paddleWidth, this.canvas.height/2 - CONFIG.paddleHeight/2, this.canvas.height);
+        
+        this.balls = [];
+        this.spawnBall(1);
+        
+        this.powerups = [];
+        this.particles.clear();
+        
+        this.updateScore();
+        document.getElementById('mainMenu').classList.add('hidden');
+        document.getElementById('gameOverScreen').classList.add('hidden');
+        document.getElementById('hud').style.opacity = '1';
+        
+        this.state = 'PLAYING';
+    }
+
+    spawnBall(direction) {
+        const ball = new Ball(this.canvas.width/2, this.canvas.height/2, this.balls.length === 0);
+        ball.reset(this.canvas.width, this.canvas.height, direction, CONFIG.initialBallSpeed * this.diffSettings.ballSpeedMod);
+        this.balls.push(ball);
+    }
+
+    spawnPowerup() {
+        if (this.powerups.length >= 2) return;
+        
+        const x = this.canvas.width / 2 + (Math.random() - 0.5) * this.canvas.width * 0.5;
+        const y = Math.random() * (this.canvas.height - 100) + 50;
+        this.powerups.push(new PowerUp(x, y));
+    }
+
+    togglePause() {
+        if (this.state === 'PLAYING') {
+            this.state = 'PAUSED';
+            document.getElementById('pauseScreen').classList.remove('hidden');
+        } else if (this.state === 'PAUSED') {
+            this.state = 'PLAYING';
+            document.getElementById('pauseScreen').classList.add('hidden');
+        }
+    }
+
+    update() {
+        if (this.state !== 'PLAYING') return;
+        
+        this.frameCount++;
+        this.gridOffset = (this.gridOffset + 0.5) % 40;
+        
+        if (this.shakeAmount > 0) {
+            this.shakeAmount *= 0.9;
+            if (this.shakeAmount < 0.5) this.shakeAmount = 0;
+        }
+
+        let targetY = this.mouseY;
+        if (this.keys['ArrowUp'] || this.keys['KeyW']) {
+            targetY = this.player.y - 20;
+        }
+        if (this.keys['ArrowDown'] || this.keys['KeyS']) {
+            targetY = this.player.y + this.player.height + 20;
+        }
+
+        this.player.update(targetY);
+        
+        let aiTarget = this.canvas.height / 2;
+        if (this.balls.length > 0) {
+            let targetBall = this.balls[0];
+            let minDist = Infinity;
+            
+            this.balls.forEach(ball => {
+                if (ball.dx > 0) {
+                    const dist = this.canvas.width - ball.x;
+                    if (dist < minDist) {
+                        minDist = dist;
+                        targetBall = ball;
+                    }
+                }
+            });
+            
+            if (targetBall.dx > 0) {
+                const timeToReach = (this.cpu.x - targetBall.x) / targetBall.dx;
+                let predictedY = targetBall.y + targetBall.dy * timeToReach;
+                
+                let bounces = 0;
+                while ((predictedY < 0 || predictedY > this.canvas.height) && bounces < 2) {
+                    if (predictedY < 0) predictedY = -predictedY;
+                    if (predictedY > this.canvas.height) predictedY = 2 * this.canvas.height - predictedY;
+                    bounces++;
+                }
+                
+                const error = (1 - this.diffSettings.predictiveness) * 100;
+                aiTarget = predictedY + (Math.random() - 0.5) * error;
+            }
+        }
+        
+        this.cpu.update(aiTarget, this.diffSettings.cpuSpeed / 6);
+
+        for (let i = this.balls.length - 1; i >= 0; i--) {
+            const ball = this.balls[i];
+            const collision = ball.update(this.canvas.width, this.canvas.height);
+            
+            if (collision === 'wall') {
+                this.audio.play('wall');
+                this.particles.createSparkle(ball.x, ball.y, CONFIG.colors.ball, 5);
+            }
+            
+            if (ball.life === 0 && !ball.isMain) {
+                this.balls.splice(i, 1);
+                continue;
+            }
+            
+            if (this.frameCount % 3 === 0) {
+                this.particles.createTrail(ball.x, ball.y, ball.isMain ? CONFIG.colors.ballTrail : '#ff0');
+            }
+            
+            this.checkPaddleCollision(ball, this.player, true);
+            this.checkPaddleCollision(ball, this.cpu, false);
+            
+            if (ball.x < 0) {
+                this.scorePoint('cpu');
+                if (ball.isMain) {
+                    this.balls = this.balls.filter(b => b !== ball);
+                    if (this.balls.length === 0) this.spawnBall(-1);
+                } else {
+                    this.balls.splice(i, 1);
+                }
+            } else if (ball.x > this.canvas.width) {
+                this.scorePoint('player');
+                if (ball.isMain) {
+                    this.balls = this.balls.filter(b => b !== ball);
+                    if (this.balls.length === 0) this.spawnBall(1);
+                } else {
+                    this.balls.splice(i, 1);
+                }
+            }
+        }
+
+        for (let i = this.powerups.length - 1; i >= 0; i--) {
+            const p = this.powerups[i];
+            if (!p.update()) {
+                this.powerups.splice(i, 1);
+                continue;
+            }
+            
+            this.balls.forEach(ball => {
+                const dx = ball.x - p.x;
+                const dy = ball.y - p.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                if (dist < ball.radius + p.radius) {
+                    this.collectPowerup(p, ball);
+                    this.powerups.splice(i, 1);
+                }
+            });
+        }
+
+        if (this.frameCount % 600 === 0 && Math.random() < CONFIG.powerUpChance) {
+            this.spawnPowerup();
+        }
+
+        if (this.combo > 0) {
+            this.comboTimer--;
+            if (this.comboTimer <= 0) {
+                this.combo = 0;
+                this.updateComboDisplay();
+            }
+        }
+
+        this.particles.update();
+    }
+
+    checkPaddleCollision(ball, paddle, isPlayer) {
+        const paddleCenter = paddle.y + paddle.height / 2;
+        const closestX = Math.max(paddle.x, Math.min(ball.x, paddle.x + paddle.width));
+        const closestY = Math.max(paddle.y, Math.min(ball.y, paddle.y + paddle.height));
+        
+        const dx = ball.x - closestX;
+        const dy = ball.y - closestY;
+        const distSq = dx*dx + dy*dy;
+        
+        if (distSq < ball.radius * ball.radius) {
+            this.audio.play('paddle');
+            
+            const hitPoint = (ball.y - paddleCenter) / (paddle.height / 2);
+            const maxAngle = Math.PI / 3;
+            const angle = hitPoint * maxAngle;
+            
+            ball.speed = Math.min(ball.speed * 1.05, CONFIG.maxBallSpeed);
+            
+            const direction = isPlayer ? 1 : -1;
+            let speedMult = 1;
+            if (paddle.effects.speed > 0) speedMult = 1.3;
+            
+            ball.dx = Math.cos(angle) * ball.speed * direction * speedMult;
+            ball.dy = Math.sin(angle) * ball.speed * speedMult;
+            
+            if (isPlayer) {
+                ball.x = paddle.x + paddle.width + ball.radius;
+            } else {
+                ball.x = paddle.x - ball.radius;
+            }
+            
+            const color = isPlayer ? CONFIG.colors.player : CONFIG.colors.cpu;
+            this.particles.createExplosion(ball.x, ball.y, color, 15);
+            this.particles.createShockwave(ball.x, ball.y, color);
+            
+            if (this.settings.get('shake')) {
+                this.shakeAmount = 10;
+            }
+            
+            this.stats.rally++;
+            this.stats.totalHits++;
+            if (this.stats.rally > this.stats.maxRally) this.stats.maxRally = this.stats.rally;
+            
+            this.combo++;
+            this.comboTimer = CONFIG.comboTime;
+            if (this.combo > this.stats.maxCombo) this.stats.maxCombo = this.combo;
+            this.updateComboDisplay();
+            
+            if (this.combo >= 3) {
+                this.audio.play('combo', this.combo);
+            }
+            
+            return true;
+        }
+        return false;
+    }
+
+    collectPowerup(powerup, ball) {
+        this.audio.play('powerup');
+        this.stats.powerupsUsed++;
+        
+        const isPlayer = ball.dx > 0;
+        
+        if (powerup.type === 'multiball') {
+            for (let i = 0; i < 2; i++) {
+                const newBall = new Ball(ball.x, ball.y, false);
+                newBall.dx = ball.dx * (0.8 + Math.random() * 0.4);
+                newBall.dy = ball.dy * (0.5 + Math.random());
+                newBall.speed = ball.speed * 0.9;
+                this.balls.push(newBall);
+            }
+        } else if (powerup.type === 'expand') {
+            if (isPlayer) this.player.addEffect('expand');
+            else this.cpu.addEffect('expand');
+        } else if (powerup.type === 'shrink') {
+            if (isPlayer) this.cpu.addEffect('shrink');
+            else this.player.addEffect('shrink');
+        } else if (powerup.type === 'speed') {
+            if (isPlayer) this.player.addEffect('speed');
+            else this.cpu.addEffect('speed');
+        } else if (powerup.type === 'slow') {
+            this.balls.forEach(b => b.speed *= 0.7);
+        } else if (powerup.type === 'ghost') {
+            if (isPlayer) this.player.addEffect('ghost');
+            else this.cpu.addEffect('ghost');
+        }
+        
+        this.particles.createExplosion(powerup.x, powerup.y, powerup.getColor(), 30, 10);
+    }
+
+    scorePoint(winner) {
+        this.scores[winner]++;
+        this.stats.rally = 0;
+        this.combo = 0;
+        this.updateComboDisplay();
+        
+        this.audio.play('score');
+        this.updateScore();
+        
+        const x = winner === 'player' ? this.canvas.width - 100 : 100;
+        this.particles.createExplosion(x, this.canvas.height/2, winner === 'player' ? CONFIG.colors.player : CONFIG.colors.cpu, 50, 15);
+        
+        if (this.scores[winner] >= CONFIG.winScore) {
+            this.endGame(winner);
+        }
+    }
+
+    updateScore() {
+        document.getElementById('scorePlayer').textContent = this.scores.player;
+        document.getElementById('scoreCPU').textContent = this.scores.cpu;
+    }
+
+    updateComboDisplay() {
+        const display = document.getElementById('comboDisplay');
+        if (this.combo >= 3) {
+            display.textContent = `COMBO x${this.combo}!`;
+            display.classList.add('show');
+        } else {
+            display.classList.remove('show');
+        }
+    }
+
+    endGame(winner) {
+        this.state = 'GAMEOVER';
+        this.audio.play('win');
+        
+        const isPlayerWin = winner === 'player';
+        const titleEl = document.getElementById('winnerTitle');
+        titleEl.textContent = isPlayerWin ? 'VICTORY' : 'DEFEAT';
+        titleEl.className = 'game-over-title ' + (isPlayerWin ? 'win' : 'lose');
+        
+        document.getElementById('finalScore').textContent = `${this.scores.player} - ${this.scores.cpu}`;
+        document.getElementById('statRally').textContent = this.stats.maxRally + ' hits';
+        document.getElementById('statPowerups').textContent = this.stats.powerupsUsed;
+        document.getElementById('statCombo').textContent = 'x' + this.stats.maxCombo;
+        
+        document.getElementById('gameOverScreen').classList.remove('hidden');
+    }
+
+    draw() {
+        this.ctx.save();
+        
+        if (this.shakeAmount > 0) {
+            const dx = (Math.random() - 0.5) * this.shakeAmount;
+            const dy = (Math.random() - 0.5) * this.shakeAmount;
+            this.ctx.translate(dx, dy);
+        }
+        
+        this.ctx.fillStyle = 'rgba(2, 2, 4, 0.3)';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        if (this.settings.get('grid')) {
+            this.drawGrid();
+        }
+        
+        this.ctx.strokeStyle = '#1a1a1a';
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([10, 15]);
+        this.ctx.beginPath();
+        this.ctx.moveTo(this.canvas.width / 2, 0);
+        this.ctx.lineTo(this.canvas.width / 2, this.canvas.height);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]);
+        
+        if (this.player) this.player.draw(this.ctx);
+        if (this.cpu) this.cpu.draw(this.ctx);
+        
+        this.balls.forEach(ball => ball.draw(this.ctx));
+        this.powerups.forEach(p => p.draw(this.ctx));
+        
+        this.particles.draw(this.ctx);
+        
+        if (this.settings.get('scanlines')) {
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            for (let y = 0; y < this.canvas.height; y += 4) {
+                this.ctx.fillRect(0, y, this.canvas.width, 2);
+            }
+        }
+        
+        this.ctx.restore();
+    }
+
+    drawGrid() {
+        this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+        this.ctx.lineWidth = 1;
+        
+        for (let x = 0; x < this.canvas.width; x += 40) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, 0);
+            this.ctx.lineTo(x, this.canvas.height);
+            this.ctx.stroke();
+        }
+        
+        for (let y = this.gridOffset; y < this.canvas.height; y += 40) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, y);
+            this.ctx.lineTo(this.canvas.width, y);
+            this.ctx.stroke();
+        }
+    }
+
+    loop(timestamp) {
+        const deltaTime = timestamp - this.lastTime;
+        this.lastTime = timestamp;
+        
+        this.update();
+        this.draw();
+        
+        requestAnimationFrame((t) => this.loop(t));
+    }
+}
+
+// Initialize game when DOM is ready
+window.addEventListener('DOMContentLoaded', () => {
+    const game = new NeonPong();
+});
+</script>
+
+</body>
+</html>
